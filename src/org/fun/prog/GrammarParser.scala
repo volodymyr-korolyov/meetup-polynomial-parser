@@ -2,6 +2,10 @@ package org.fun.prog
 
 import scala.collection.immutable.List
 
+/**
+  * Defines parsing grammar combining functions.<br/>
+  * RegEx is used only to parse separate elements.
+  */
 object GrammarParser extends App {
   type Parser[T] = String => Option[(T, String)]
 
