@@ -18,9 +18,9 @@ object GrammarParser extends App {
 
   val grammar = sequenceGrammar(term | const) _
 
-  def term = number.* & variable & (char('^') & number).*   as TermType
+  def term = number.* & variable & (char('^') & number).* as TermType
 
-  def const = number   as ConstType
+  def const = number as ConstType
 
   def parse(expression: String) = {
     val tokens = Tokenizer.tokenize(expression)
@@ -30,66 +30,6 @@ object GrammarParser extends App {
   println(parse("43x^3 - 23x^2 + 10x^1 - 8"))
   println(parse("x"))
 
-
-  def ConstType(value: Int): Member = Const(value)
-
-  def TermType(value: ((Int, String), Int)): Member = Term(value._1._1, value._1._2, value._2)
-
-
-  implicit class ParserExtension[T](f1: Parser[T]) {
-    def |(f2: Parser[T]) = oneOf(f1, f2) _
-
-    def &[T2](f2: Parser[T2]) = composite(f1, f2) _
-
-    def as[V](converter: T => V) = convert(f1, converter) _
-
-    def *(implicit defaultValue: T) = optional(f1, defaultValue)
-  }
-
-  implicit class NoValueParserExtension(f1: NoValueParser) {
-    def &[T](f2: Parser[T]) = compositeNoValue(f1, f2) _
-  }
-
-  def convertToTerm(const: Int, symbol: String, power: Int) = Term(const, symbol, power)
-
-  def convertConst(const: Int) = Const(const)
-
-  def sequenceGrammar[T](f: Parser[T])(expression: Expression): List[T] = expression match {
-    case Nil => List[T]()
-    case _ => f(expression) match {
-      case Some((value, tail)) => value :: sequenceGrammar(f)(tail)
-      case None => throw new IllegalArgumentException(expression.toString)
-    }
-  }
-
-  def oneOf[T](f1: Parser[T], f2: Parser[T])(expression: Expression) = {
-    f1(expression).orElse(f2(expression))
-  }
-
-  def optional[T](f: Parser[T], defaultValue: T) = (expression: Expression) => f(expression) match {
-    case parsed: Some[(T, Expression)] => parsed
-    case _ => Some((defaultValue, expression))
-  }
-
-  def convert[T1, V](f1: Parser[T1], convert: (T1) => V)(expression: Expression) = {
-    for {
-      (v1, expression) <- f1(expression)
-    } yield (convert(v1), expression)
-  }
-
-  def composite[T1, T2, V](f1: Parser[T1], f2: Parser[T2])(expression: Expression) = {
-    for {
-      (v1, expression) <- f1(expression)
-      (v2, expression) <- f2(expression)
-    } yield ((v1, v2), expression)
-  }
-
-  def compositeNoValue[T, V](f1: NoValueParser, f2: Parser[T])(expression: Expression) = {
-    for {
-      expression <- f1(expression)
-      (v2, expression) <- f2(expression)
-    } yield (v2, expression)
-  }
 
   def number: Parser[Int] = {
     case SymbolToken('+') :: NumberToken(value) :: tail => Some((value, tail))
@@ -107,4 +47,51 @@ object GrammarParser extends App {
     case SymbolToken(symbol) :: tail if symbol == char => Some(tail)
     case _ => None
   }
+
+  implicit class ParserExtension[T](f1: Parser[T]) {
+
+    def |(f2: Parser[T]) = (expression: Expression) => {
+      f1(expression).orElse(f2(expression))
+    }
+
+    def &[T2](f2: Parser[T2]) = (expression: Expression) => {
+      for {
+        (v1, expression) <- f1(expression)
+        (v2, expression) <- f2(expression)
+      } yield ((v1, v2), expression)
+    }
+
+    def as[V](converter: T => V) = (expression: Expression) => {
+      for {
+        (v1, expression) <- f1(expression)
+      } yield (converter(v1), expression)
+    }
+
+    def *(implicit defaultValue: T) = (expression: Expression) => f1(expression) match {
+      case parsed: Some[(T, Expression)] => parsed
+      case _ => Some((defaultValue, expression))
+    }
+  }
+
+  implicit class NoValueParserExtension(f1: NoValueParser) {
+    def &[T](f2: Parser[T]) = (expression: Expression) => {
+      for {
+        expression <- f1(expression)
+        (v2, expression) <- f2(expression)
+      } yield (v2, expression)
+    }
+  }
+
+  def sequenceGrammar[T](f: Parser[T])(expression: Expression): List[T] = expression match {
+    case Nil => List[T]()
+    case _ => f(expression) match {
+      case Some((value, tail)) => value :: sequenceGrammar(f)(tail)
+      case None => throw new IllegalArgumentException(expression.toString)
+    }
+  }
+
+  def ConstType(value: Int): Member = Const(value)
+
+  def TermType(value: ((Int, String), Int)): Member = Term(value._1._1, value._1._2, value._2)
+
 }
