@@ -3,6 +3,7 @@ package org.fun.prog
 import org.fun.prog.Tokenizer.{NumberToken, SymbolToken, VariableToken}
 
 import scala.collection.immutable.List
+import scala.util.{Failure, Success, Try}
 
 /**
   * Grammar is defined with parsing functions.<br/>
@@ -11,14 +12,14 @@ import scala.collection.immutable.List
 //noinspection EmptyParenMethodAccessedAsParameterless
 object GrammarParser extends App {
   type Expression = List[Tokenizer.Token]
-  type Parser[T] = Expression => Option[(T, Expression)]
+  type Parser[T] = Expression => Try[(T, Expression)]
 
   implicit val defaultTermConst = 1
   implicit val defaultTermPower = ('^', 1)
 
   // Polynomial BNF-like grammar:
 
-  def grammar = (term | const) +
+  def grammar = (term | const) *
 
   def term = number.? & variable & (char('^') & number).? as TermType
 
@@ -27,10 +28,7 @@ object GrammarParser extends App {
 
   def parse(expression: String) = {
     val tokens = Tokenizer.tokenize(expression)
-    grammar(tokens) match {
-      case Some((values, Nil)) => values
-      case None => throw new RuntimeException("Failed to parse " + expression)
-    }
+    grammar(tokens).get._1
   }
 
   println(parse("43x^3 - 23x^2 + 10x^1 - 8"))
@@ -38,20 +36,24 @@ object GrammarParser extends App {
 
 
   def number: Parser[Int] = {
-    case SymbolToken('+') :: NumberToken(value) :: tail => Some((value, tail))
-    case SymbolToken('-') :: NumberToken(value) :: tail => Some((-value, tail))
-    case NumberToken(value) :: tail => Some((value, tail))
-    case _ => None
+    case SymbolToken('+') :: NumberToken(value) :: tail => Success((value, tail))
+    case SymbolToken('-') :: NumberToken(value) :: tail => Success((-value, tail))
+    case NumberToken(value) :: tail => Success((value, tail))
+    case expression => parseFailure(expression)
   }
 
   def variable: Parser[String] = {
-    case VariableToken(variable) :: tail => Some((variable, tail))
-    case _ => None
+    case VariableToken(variable) :: tail => Success((variable, tail))
+    case expression => parseFailure(expression)
   }
 
   def char(char: Char): Parser[Char] = {
-    case SymbolToken(symbol) :: tail if symbol == char => Some((symbol, tail))
-    case _ => None
+    case SymbolToken(symbol) :: tail if symbol == char => Success((symbol, tail))
+    case expression => parseFailure(expression)
+  }
+
+  private def parseFailure(expression: Expression) = {
+    Failure(new Exception(s"Failed to parse: $expression"))
   }
 
   implicit class ParserExtension[T](f1: Parser[T]) {
@@ -68,14 +70,14 @@ object GrammarParser extends App {
     }
 
     def ?(implicit defaultValue: T) = (expression: Expression) => {
-      f1(expression).orElse(Some((defaultValue, expression)))
+      f1(expression).orElse(Success((defaultValue, expression)))
     }
 
-    def +(): Parser[List[T]] = {
-      case Nil => Some((Nil, Nil))
+    def *(): Parser[List[T]] = {
+      case Nil => Success((Nil, Nil))
       case expression => for {
         (headValue, tail) <- f1(expression)
-        (tailValue, unparsedTail) <- this.+()(tail)
+        (tailValue, unparsedTail) <- this.*()(tail)
       } yield (headValue :: tailValue, unparsedTail)
     }
 
