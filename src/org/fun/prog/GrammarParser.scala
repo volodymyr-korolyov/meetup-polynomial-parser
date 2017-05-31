@@ -19,16 +19,15 @@ object GrammarParser extends App {
 
   // Polynomial BNF-like grammar:
 
-  def grammar = part  &  signedPart.*   as PartsList
+  def grammar = (term | const).*
 
-  def part = term | const
+  def term = coefficient.?  &  variable  &  (char('^') & number).?   as TermType
 
-  def signedPart = (char('+') | char('-'))  &  part   as Part
+  def const = coefficient   as ConstType
 
-  def term = number.?  &  variable  &  (char('^') & number).?   as TermType
+  def coefficient = sign.?  &  number   as Coefficient
 
-  def const = number   as ConstType
-
+  def sign = char('+') | char('-')   as Sign
 
   def parseAndFormat(expression: String) = {
     val tokens = Tokenizer.tokenize(expression)
@@ -41,7 +40,7 @@ object GrammarParser extends App {
 
   println(parseAndFormat("43x^3 - 23x^2 + 10x^1 - 8"))
   println(parseAndFormat("x"))
-  println(parseAndFormat("x 1"))
+  println(parseAndFormat("x !not polynomial!"))
 
 
   def number: Parser[Int] = {
@@ -95,17 +94,14 @@ object GrammarParser extends App {
     }
   }
 
+  def Sign(value: Char): Int = value match {
+    case '+' => 1
+    case '-' => -1
+  }
+
+  def Coefficient(value: (Int, Int)): Int = value._1 * value._2
+
   def ConstType(value: Int): Member = Const(value)
 
   def TermType(value: ((Int, String), (Char, Int))): Member = Term(value._1._1, value._1._2, value._2._2)
-
-  def Part(value: (Char, Member)): Member = {
-    val sign = value._1 match {
-      case '+' => 1
-      case '-' => -1
-    }
-    value._2.multiply(sign)
-  }
-
-  def PartsList(value: (Member, List[Member])) = value._1 :: value._2
 }
