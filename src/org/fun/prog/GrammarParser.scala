@@ -9,7 +9,7 @@ import scala.util.{Failure, Success, Try}
   * Grammar is defined with parsing functions.<br/>
   * See idea explanation at http://stackoverflow.com/questions/2245962/is-there-an-alternative-for-flex-bison-that-is-usable-on-8-bit-embedded-systems/2336769#2336769
   */
-//noinspection EmptyParenMethodAccessedAsParameterless
+//noinspection EmptyParenMethodAccessedAsParameterless,ScalaUnusedSymbol
 object GrammarParser extends App {
   type Expression = List[Tokenizer.Token]
   type Parser[T] = Expression => Try[(T, Expression)]
@@ -19,25 +19,32 @@ object GrammarParser extends App {
 
   // Polynomial BNF-like grammar:
 
-  def grammar = (term | const) *
+  def grammar = part  &  signedPart.*   as PartsList
 
-  def term = number.? & variable & (char('^') & number).? as TermType
+  def part = term | const
 
-  def const = number as ConstType
+  def signedPart = (char('+') | char('-'))  &  part   as Part
+
+  def term = number.?  &  variable  &  (char('^') & number).?   as TermType
+
+  def const = number   as ConstType
 
 
-  def parse(expression: String) = {
+  def parseAndFormat(expression: String) = {
     val tokens = Tokenizer.tokenize(expression)
-    grammar(tokens).get._1
+    grammar(tokens) match {
+      case Success((value, Nil)) => value.toString
+      case Success((value, tail)) => s"Failed to parse $tail"
+      case Failure(error) => error.getMessage
+    }
   }
 
-  println(parse("43x^3 - 23x^2 + 10x^1 - 8"))
-  println(parse("x"))
+  println(parseAndFormat("43x^3 - 23x^2 + 10x^1 - 8"))
+  println(parseAndFormat("x"))
+  println(parseAndFormat("x 1"))
 
 
   def number: Parser[Int] = {
-    case SymbolToken('+') :: NumberToken(value) :: tail => Success((value, tail))
-    case SymbolToken('-') :: NumberToken(value) :: tail => Success((-value, tail))
     case NumberToken(value) :: tail => Success((value, tail))
     case expression => parseFailure(expression)
   }
@@ -73,11 +80,11 @@ object GrammarParser extends App {
       f1(expression).orElse(Success((defaultValue, expression)))
     }
 
-    def *(): Parser[List[T]] = {
+    def * : Parser[List[T]] = {
       case Nil => Success((Nil, Nil))
       case expression => for {
         (headValue, tail) <- f1(expression)
-        (tailValue, unparsedTail) <- this.*()(tail)
+        (tailValue, unparsedTail) <- this.*(tail)
       } yield (headValue :: tailValue, unparsedTail)
     }
 
@@ -91,4 +98,14 @@ object GrammarParser extends App {
   def ConstType(value: Int): Member = Const(value)
 
   def TermType(value: ((Int, String), (Char, Int))): Member = Term(value._1._1, value._1._2, value._2._2)
+
+  def Part(value: (Char, Member)): Member = {
+    val sign = value._1 match {
+      case '+' => 1
+      case '-' => -1
+    }
+    value._2.multiply(sign)
+  }
+
+  def PartsList(value: (Member, List[Member])) = value._1 :: value._2
 }

@@ -1,5 +1,6 @@
 package org.fun.prog
 
-class Member() {
+abstract class Member() {
 
+  def multiply(multiplier: Int): Member
 }
